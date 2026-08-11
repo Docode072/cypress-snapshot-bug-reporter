@@ -18,9 +18,7 @@ async function runInit() {
   console.log("🤖 Cypress Snapshot Bug Reporter Setup");
   console.log("======================================================\n");
 
-  console.log(
-    "This utility will help you configure your AI provider API keys.",
-  );
+  console.log("This utility will help you configure your AI provider API keys.");
   console.log("The keys will be saved to a .env file in your project root.\n");
 
   const envFilePath = path.join(process.cwd(), ".env");
@@ -34,10 +32,13 @@ async function runInit() {
   }
 
   let selectedProvider = "";
+  let defaultModel = "";
+  let defaultEndpoint = "";
+  let providerDisplay = "";
 
   while (true) {
     const answer = await question(
-      "Which AI provider do you want to configure? (openai/anthropic/gemini/skip): ",
+      "Which AI provider do you want to configure? (google/openai/anthropic/skip): ",
     );
     const lowerAnswer = answer.toLowerCase().trim();
 
@@ -45,39 +46,52 @@ async function runInit() {
       break;
     }
 
-    if (lowerAnswer === "openai") {
-      selectedProvider = "OPENAI_API_KEY";
+    if (lowerAnswer === "google" || lowerAnswer === "gemini") {
+      selectedProvider = "google";
+      providerDisplay = "Google Gemini";
+      defaultModel = "gemini-1.5-flash";
+      defaultEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+      break;
+    } else if (lowerAnswer === "openai") {
+      selectedProvider = "openai";
+      providerDisplay = "OpenAI";
+      defaultModel = "gpt-4o";
+      defaultEndpoint = "https://api.openai.com/v1/chat/completions";
       break;
     } else if (lowerAnswer === "anthropic") {
-      selectedProvider = "ANTHROPIC_API_KEY";
-      break;
-    } else if (lowerAnswer === "gemini") {
-      selectedProvider = "GEMINI_API_KEY";
+      selectedProvider = "anthropic";
+      providerDisplay = "Anthropic Claude";
+      defaultModel = "claude-3-5-sonnet-20241022";
+      defaultEndpoint = "https://api.anthropic.com/v1/messages";
       break;
     } else {
-      console.log(
-        "Invalid option. Please enter openai, anthropic, gemini, or skip.",
-      );
+      console.log("Invalid option. Please enter google, openai, anthropic, or skip.");
     }
   }
 
   if (selectedProvider) {
     const apiKey = await question(
-      `Enter your ${selectedProvider.split("_")[0]} API key (or multiple keys separated by commas for rotation): `,
+      `Enter your ${providerDisplay} API key (or multiple keys separated by commas for rotation): `,
     );
 
     if (apiKey.trim()) {
-      const envRegex = new RegExp(`^${selectedProvider}=.*$`, "m");
-      if (envRegex.test(envContent)) {
-        envContent = envContent.replace(
-          envRegex,
-          `${selectedProvider}=${apiKey.trim()}`,
-        );
-        console.log(`\nUpdated ${selectedProvider} in .env file.`);
-      } else {
-        envContent += `\n${selectedProvider}=${apiKey.trim()}\n`;
-        console.log(`\nAdded ${selectedProvider} to .env file.`);
-      }
+      // Helper to replace or append env vars
+      const upsertEnv = (key: string, value: string) => {
+        const regex = new RegExp(`^${key}=.*$`, "m");
+        if (regex.test(envContent)) {
+          envContent = envContent.replace(regex, `${key}=${value}`);
+          console.log(`Updated ${key}`);
+        } else {
+          envContent += `\n${key}=${value}`;
+          console.log(`Added ${key}`);
+        }
+      };
+
+      console.log("\nConfiguring .env...");
+      upsertEnv("AI_PROVIDER", selectedProvider);
+      upsertEnv("AI_MODEL", defaultModel);
+      upsertEnv("AI_ENDPOINT", defaultEndpoint);
+      upsertEnv("AI_API_KEY", apiKey.trim());
 
       fs.writeFileSync(envFilePath, envContent.trim() + "\n", "utf8");
     } else {
@@ -88,9 +102,7 @@ async function runInit() {
   console.log("\n======================================================");
   console.log("✅ Setup Complete!");
   console.log("======================================================");
-  console.log(
-    "You can now run your visual regression tests with AI bug reporting.",
-  );
+  console.log("You can now run your visual regression tests with AI bug reporting.");
 
   rl.close();
 }
