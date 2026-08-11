@@ -1,0 +1,119 @@
+{
+  "name": "cypress-snapshot-bug-reporter",
+  "version": "2.0.0-beta.1",
+  "description": "AI-powered Cypress plugin for visual regression testing with intelligent bug report generation. Supports OpenAI, Anthropic, Google Gemini, and custom AI providers.",
+  "main": "./dist/plugin/index.js",
+  "types": "./dist/types/index.d.ts",
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "require": "./dist/plugin/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/types/plugin.d.ts",
+      "require": "./dist/plugin/index.js"
+    },
+    "./commands": {
+      "types": "./dist/types/commands.d.ts",
+      "require": "./dist/commands/index.js"
+    },
+    "./support": {
+      "types": "./dist/types/support.d.ts",
+      "require": "./dist/support/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "cypress-snapshot-bug-reporter": "./scripts/snapshot-analysis-report.js",
+    "cypress-snapshot-init": "./dist/cli/init.js"
+  },
+  "files": [
+    "dist",
+    "scripts",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "build:watch": "tsc -p tsconfig.build.json --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint 'src/**/*.{ts,js}'",
+    "lint:fix": "eslint 'src/**/*.{ts,js}' --fix",
+    "format": "prettier --write 'src/**/*.{ts,js,json}'",
+    "format:check": "prettier --check 'src/**/*.{ts,js,json}'",
+    "test": "jest",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "snapshot:run": "cypress run",
+    "snapshot:report": "node scripts/snapshot-analysis-report.js",
+    "check:all": "npm run format:check && npm run lint && npm run type-check && npm run build && npm run test",
+    "check:pack": "npm pack --dry-run",
+    "audit:prod": "npm audit --omit=dev",
+    "prepublishOnly": "npm run check:all && npm run check:pack && npm run audit:prod",
+    "prepack": "npm run build",
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "keywords": [
+    "cypress",
+    "snapshot",
+    "visual-regression",
+    "testing",
+    "screenshot",
+    "pixelmatch",
+    "ai",
+    "openai",
+    "anthropic",
+    "gemini",
+    "bug-reporter",
+    "excel",
+    "diff",
+    "automation",
+    "qa",
+    "typescript"
+  ],
+  "author": "Himanshu Singh",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Docode072/cypress-snapshot-bug-reporter.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Docode072/cypress-snapshot-bug-reporter/issues"
+  },
+  "homepage": "https://github.com/Docode072/cypress-snapshot-bug-reporter#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "peerDependencies": {
+    "cypress": ">=13.0.0"
+  },
+  "dependencies": {
+    "pixelmatch": "5.3.0",
+    "pngjs": "^7.0.0",
+    "xlsx-populate": "^1.21.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.2.0",
+    "@types/pixelmatch": "^5.2.6",
+    "@types/pngjs": "^6.0.5",
+    "@typescript-eslint/eslint-plugin": "^8.67.0",
+    "@typescript-eslint/parser": "^8.67.0",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.6",
+    "jest": "^30.4.2",
+    "prettier": "^3.9.6",
+    "ts-jest": "^29.4.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0"
+  }
+}

@@ -1,0 +1,487 @@
+const fs = require("fs");
+const path = require("path");
+const { PNG } = require("pngjs");
+const { COMPOSITE_SEP } = require("./constants");
+
+let pixelmatch;
+try {
+  const pm = require("pixelmatch");
+  pixelmatch = pm.default || pm;
+} catch (e) {
+  throw new Error("pixelmatch not found");
+}
+
+const DEFAULT_BASELINE_DIR = "cypress/snapshots/baseline";
+const DEFAULT_ACTUAL_DIR = "cypress/snapshots/actual";
+const DEFAULT_DIFF_DIR = "cypress/snapshots/diff";
+// Where Cypress writes screenshots by default when the screenshotsFolder
+// override does not take effect (e.g. setupNodeEvents did not `return config`).
+const DEFAULT_SCREENSHOTS_DIR = "cypress/screenshots";
+
+const RETURN_CONFIG_HINT =
+  "If folders are empty, your setupNodeEvents likely did not `return config`. " +
+  "Make sure you do: `setupNodeEvents(on, config) { config = configSnapshot(on, config); return config; }`.";
+
+function ensureDir(filePath) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function removeIfExists(filePath) {
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
+
+function samePath(left, right) {
+  return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+}
+
+function waitForFile(filePath, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+
+    const poll = () => {
+      if (fs.existsSync(filePath)) {
+        resolve(true);
+        return;
+      }
+      if (Date.now() - start >= timeoutMs) {
+        resolve(false);
+        return;
+      }
+      setTimeout(poll, 50);
+    };
+
+    poll();
+  });
+}
+
+function listPngFiles(dir, maxDepth = 5) {
+  const files = [];
+  if (!fs.existsSync(dir)) return files;
+
+  const walk = (currentDir, depth) => {
+    if (depth > maxDepth) return;
+    try {
+      const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          walk(fullPath, depth + 1);
+          continue;
+        }
+        if (entry.isFile() && entry.name.toLowerCase().endsWith(".png")) {
+          files.push(fullPath);
+        }
+      }
+    } catch (e) {}
+  };
+
+  walk(dir, 0);
+  return files;
+}
+
+function formatPngFilesForDebug(dirs) {
+  const uniqueDirs = [...new Set(dirs)];
+  return uniqueDirs
+    .map((dir) => {
+      const pngFiles = listPngFiles(dir);
+      return `${dir}: [${pngFiles.length ? pngFiles.join(", ") : "(none)"}]`;
+    })
+    .join("; ");
+}
+
+async function resolveScreenshotPath(dir, safeName, waitTimeout = 5000) {
+  const directPath = path.join(dir, `${safeName}.png`);
+  if (await waitForFile(directPath, waitTimeout)) return directPath;
+  if (!fs.existsSync(dir)) return null;
+
+  const tail = `${path.sep}${safeName}.png`.toLowerCase();
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < waitTimeout) {
+    let bestMatch = null;
+    let bestMtime = -1;
+
+    const walk = (currentDir) => {
+      try {
+        const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = path.join(currentDir, entry.name);
+          if (entry.isDirectory()) {
+            walk(fullPath);
+            continue;
+          }
+          if (!entry.isFile()) continue;
+          if (!fullPath.toLowerCase().endsWith(tail)) continue;
+
+          const { mtimeMs } = fs.statSync(fullPath);
+          if (mtimeMs > bestMtime) {
+            bestMtime = mtimeMs;
+            bestMatch = fullPath;
+          }
+        }
+      } catch (e) {}
+    };
+
+    walk(dir);
+    if (bestMatch) return bestMatch;
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  return null;
+}
+
+async function placeScreenshot({
+  safeName,
+  name,
+  destDir,
+  SCREENSHOTS_DIR,
+  DEFAULT_SCREENSHOTS_DIR: defaultScreenshotsDir = DEFAULT_SCREENSHOTS_DIR,
+  screenshotPath,
+  screenshotTimeout = 5000,
+}) {
+  const destPath = path.join(destDir, `${safeName}.png`);
+
+  let sourcePath = null;
+
+  // 1. Highest priority: the exact path captured by the command. If it exists
+  // we can skip all directory scanning entirely.
+  if (
+    screenshotPath &&
+    (await waitForFile(screenshotPath, screenshotTimeout))
+  ) {
+    sourcePath = screenshotPath;
+  }
+
+  // 2. Otherwise scan the known locations: the configured temp dir, the
+  // destination dir, and the default Cypress screenshots folder (covers the
+  // case where the screenshotsFolder override never applied).
+  const searchDirs = [
+    ...new Set(
+      [SCREENSHOTS_DIR, destDir, defaultScreenshotsDir].filter(Boolean),
+    ),
+  ];
+  if (!sourcePath) {
+    for (const dir of searchDirs) {
+      sourcePath = await resolveScreenshotPath(
+        dir,
+        safeName,
+        screenshotTimeout,
+      );
+      if (sourcePath) break;
+    }
+  }
+
+  if (!sourcePath) {
+    const debugInfo = formatPngFilesForDebug(searchDirs);
+    throw new Error(
+      `Screenshot not found: "${name}". PNG files found: ${debugInfo}. ${RETURN_CONFIG_HINT}`,
+    );
+  }
+
+  ensureDir(destPath);
+  if (!samePath(sourcePath, destPath)) {
+    fs.copyFileSync(sourcePath, destPath);
+  }
+
+  return destPath;
+}
+
+function copyPanel(src, dst, offsetX) {
+  for (let y = 0; y < src.height; y++) {
+    for (let x = 0; x < src.width; x++) {
+      const si = (y * src.width + x) * 4;
+      const di = (y * dst.width + (x + offsetX)) * 4;
+      dst.data[di] = src.data[si];
+      dst.data[di + 1] = src.data[si + 1];
+      dst.data[di + 2] = src.data[si + 2];
+      dst.data[di + 3] = src.data[si + 3];
+    }
+  }
+}
+
+function drawSeparator(dst, offsetX, sepWidth, r = 45, g = 45, b = 45) {
+  for (let y = 0; y < dst.height; y++) {
+    for (let x = 0; x < sepWidth; x++) {
+      const di = (y * dst.width + (offsetX + x)) * 4;
+      dst.data[di] = r;
+      dst.data[di + 1] = g;
+      dst.data[di + 2] = b;
+      dst.data[di + 3] = 255;
+    }
+  }
+}
+
+function createSideBySide(baseline, actual, diff) {
+  const SEP = COMPOSITE_SEP;
+  const W = baseline.width;
+  const H = baseline.height;
+  const totalW = W * 3 + SEP * 2;
+
+  const composite = new PNG({ width: totalW, height: H });
+
+  composite.data.fill(0);
+  for (let i = 3; i < composite.data.length; i += 4) composite.data[i] = 255;
+
+  copyPanel(baseline, composite, 0);
+  drawSeparator(composite, W, SEP);
+  copyPanel(diff, composite, W + SEP);
+  drawSeparator(composite, W * 2 + SEP, SEP);
+  copyPanel(actual, composite, W * 2 + SEP * 2);
+
+  return PNG.sync.write(composite);
+}
+
+const PIXELMATCH_OPTIONS = {
+  threshold: 0.1,
+  includeAA: false,
+  alpha: 0.35,
+  diffColor: [220, 38, 38],
+  diffColorAlt: [234, 179, 8],
+};
+
+const MIN_MISMATCH_PIXELS = 10;
+const MAX_SIZE_TOLERANCE = 5;
+
+function cropPng(img, width, height) {
+  const dst = new PNG({ width, height });
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const si = (y * img.width + x) * 4;
+      const di = (y * width + x) * 4;
+      dst.data[di] = img.data[si];
+      dst.data[di + 1] = img.data[si + 1];
+      dst.data[di + 2] = img.data[si + 2];
+      dst.data[di + 3] = img.data[si + 3];
+    }
+  }
+  return dst;
+}
+
+function prepareImagesForCompare(
+  img1,
+  img2,
+  maxTolerance = MAX_SIZE_TOLERANCE,
+) {
+  const widthDiff = Math.abs(img1.width - img2.width);
+  const heightDiff = Math.abs(img1.height - img2.height);
+
+  if (widthDiff > maxTolerance || heightDiff > maxTolerance) {
+    return null;
+  }
+
+  if (img1.width === img2.width && img1.height === img2.height) {
+    return { img1, img2, sizeAdjusted: false };
+  }
+
+  const width = Math.min(img1.width, img2.width);
+  const height = Math.min(img1.height, img2.height);
+
+  return {
+    img1: cropPng(img1, width, height),
+    img2: cropPng(img2, width, height),
+    sizeAdjusted: true,
+    baseline: { width: img1.width, height: img1.height },
+    actual: { width: img2.width, height: img2.height },
+  };
+}
+
+const SEVERITY_THRESHOLDS = {
+  critical: 2.0,
+  high: 0.5,
+  medium: 0.05,
+};
+
+function getSeverity(mismatch, totalPixels) {
+  const pct = (mismatch / totalPixels) * 100;
+  if (pct > SEVERITY_THRESHOLDS.critical)
+    return { level: "Critical", pct, argb: "FFFF4444" };
+  if (pct > SEVERITY_THRESHOLDS.high)
+    return { level: "High", pct, argb: "FFFF8800" };
+  if (pct > SEVERITY_THRESHOLDS.medium)
+    return { level: "Medium", pct, argb: "FFFFFF00" };
+  return { level: "Low", pct, argb: "FF90EE90" };
+}
+
+async function compareSnapshot({
+  name,
+  screenshotPath,
+  threshold = PIXELMATCH_OPTIONS.threshold,
+  screenshotTimeout = 5000,
+  BASELINE_DIR = DEFAULT_BASELINE_DIR,
+  ACTUAL_DIR = DEFAULT_ACTUAL_DIR,
+  DIFF_DIR = DEFAULT_DIFF_DIR,
+  SCREENSHOTS_DIR = ACTUAL_DIR,
+  DEFAULT_SCREENSHOTS_DIR: defaultScreenshotsDir = DEFAULT_SCREENSHOTS_DIR,
+}) {
+  const safeName = name.replace(/\//g, path.sep);
+  const baselinePath = path.join(BASELINE_DIR, `${safeName}.png`);
+  const diffPath = path.join(DIFF_DIR, `${safeName}.png`);
+
+  // No baseline at this path → this capture becomes the baseline. Nothing goes to actual/.
+  if (!fs.existsSync(baselinePath)) {
+    await placeScreenshot({
+      safeName,
+      name,
+      destDir: BASELINE_DIR,
+      SCREENSHOTS_DIR,
+      DEFAULT_SCREENSHOTS_DIR: defaultScreenshotsDir,
+      screenshotPath,
+      screenshotTimeout,
+    });
+    removeIfExists(diffPath);
+    return { status: "baseline_created", name };
+  }
+
+  // Baseline exists → store this capture in actual/ and compare.
+  const actualPath = await placeScreenshot({
+    safeName,
+    name,
+    destDir: ACTUAL_DIR,
+    SCREENSHOTS_DIR,
+    DEFAULT_SCREENSHOTS_DIR: defaultScreenshotsDir,
+    screenshotPath,
+    screenshotTimeout,
+  });
+
+  const baselineImg = PNG.sync.read(fs.readFileSync(baselinePath));
+  const actualImg = PNG.sync.read(fs.readFileSync(actualPath));
+
+  const prepared = prepareImagesForCompare(baselineImg, actualImg);
+  if (!prepared) {
+    removeIfExists(diffPath);
+    return {
+      status: "size_mismatch",
+      name,
+      baseline: { width: baselineImg.width, height: baselineImg.height },
+      actual: { width: actualImg.width, height: actualImg.height },
+    };
+  }
+
+  const {
+    img1,
+    img2,
+    sizeAdjusted,
+    baseline: baselineSize,
+    actual: actualSize,
+  } = prepared;
+
+  const diff = new PNG({ width: img1.width, height: img1.height });
+  const totalPixels = img1.width * img1.height;
+  const mismatch = pixelmatch(
+    img1.data,
+    img2.data,
+    diff.data,
+    img1.width,
+    img1.height,
+    {
+      ...PIXELMATCH_OPTIONS,
+      threshold,
+    },
+  );
+
+  const sizeMeta = sizeAdjusted
+    ? { sizeAdjusted: true, baseline: baselineSize, actual: actualSize }
+    : {};
+
+  if (mismatch === 0) {
+    removeIfExists(diffPath);
+    return {
+      status: "matched",
+      name,
+      mismatch: 0,
+      mismatchPercent: "0.0000%",
+      ...sizeMeta,
+    };
+  }
+
+  if (mismatch < MIN_MISMATCH_PIXELS) {
+    removeIfExists(diffPath);
+    return {
+      status: "noise_ignored",
+      name,
+      mismatch,
+      mismatchPercent: "< noise",
+      ...sizeMeta,
+    };
+  }
+
+  const severity = getSeverity(mismatch, totalPixels);
+
+  ensureDir(diffPath);
+  fs.writeFileSync(diffPath, createSideBySide(img1, img2, diff));
+
+  return {
+    status: "compared",
+    name,
+    mismatch,
+    totalPixels,
+    mismatchPercent: `${severity.pct.toFixed(4)}%`,
+    severity: severity.level,
+    severityArgb: severity.argb,
+    ...sizeMeta,
+  };
+}
+
+async function updateBaseline({
+  name,
+  screenshotTimeout = 5000,
+  BASELINE_DIR = DEFAULT_BASELINE_DIR,
+  ACTUAL_DIR = DEFAULT_ACTUAL_DIR,
+}) {
+  const safeName = name.replace(/\//g, path.sep);
+  const actualPath = await resolveScreenshotPath(
+    ACTUAL_DIR,
+    safeName,
+    screenshotTimeout,
+  );
+  const baselinePath = path.join(BASELINE_DIR, `${safeName}.png`);
+
+  if (!actualPath) {
+    const debugInfo = formatPngFilesForDebug([ACTUAL_DIR]);
+    throw new Error(
+      `Screenshot not found: ${safeName}. PNG files found: ${debugInfo}. ${RETURN_CONFIG_HINT}`,
+    );
+  }
+  ensureDir(baselinePath);
+  fs.copyFileSync(actualPath, baselinePath);
+  return { status: "baseline_updated", name };
+}
+
+function makeSnapshotTasks(options = {}) {
+  const BASELINE_DIR = options.baselineDir || DEFAULT_BASELINE_DIR;
+  const ACTUAL_DIR = options.actualDir || DEFAULT_ACTUAL_DIR;
+  const DIFF_DIR = options.diffDir || DEFAULT_DIFF_DIR;
+  const SCREENSHOTS_DIR = options.screenshotsDir || ACTUAL_DIR;
+  const DEFAULT_SCREENSHOTS_DIR_RESOLVED =
+    options.defaultScreenshotsDir || DEFAULT_SCREENSHOTS_DIR;
+  const screenshotTimeout = options.screenshotTimeout ?? 5000;
+  return {
+    compareSnapshot: (params) =>
+      compareSnapshot({
+        ...params,
+        BASELINE_DIR,
+        ACTUAL_DIR,
+        DIFF_DIR,
+        SCREENSHOTS_DIR,
+        DEFAULT_SCREENSHOTS_DIR: DEFAULT_SCREENSHOTS_DIR_RESOLVED,
+        screenshotTimeout: params.screenshotTimeout ?? screenshotTimeout,
+      }),
+    updateBaseline: (params) =>
+      updateBaseline({
+        ...params,
+        BASELINE_DIR,
+        ACTUAL_DIR,
+        screenshotTimeout: params.screenshotTimeout ?? screenshotTimeout,
+      }),
+  };
+}
+
+module.exports = {
+  makeSnapshotTasks,
+  compareSnapshot,
+  updateBaseline,
+  prepareImagesForCompare,
+  MAX_SIZE_TOLERANCE,
+};

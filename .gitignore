@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+cypress/snapshots/actual/
+cypress/snapshots/diff/
+cypress/snapshots/reports/
+.DS_Store
