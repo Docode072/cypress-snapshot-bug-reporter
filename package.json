@@ -1,6 +1,6 @@
 {
   "name": "cypress-snapshot-bug-reporter",
-  "version": "2.0.0-beta.1",
+  "version": "1.0.0",
   "description": "AI-powered Cypress plugin for visual regression testing with intelligent bug report generation. Supports OpenAI, Anthropic, Google Gemini, and custom AI providers.",
   "main": "./dist/plugin/index.js",
   "types": "./dist/types/index.d.ts",
