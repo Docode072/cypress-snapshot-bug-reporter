@@ -1,5 +1,5 @@
 /**
- * Cypress command registration for `cy.matchSnapshot()`.
+ * Cypress command registration for `cy.matchImageSnapshot()`.
  *
  * Import this file (or the support barrel) in your Cypress support file:
  *
@@ -30,43 +30,55 @@ export type { MatchSnapshotOptions };
 // ─── Command registration ─────────────────────────────────────────────────────
 
 /**
- * Register the `cy.matchSnapshot()` custom command with Cypress.
+ * Register the `cy.matchImageSnapshot()` custom command with Cypress.
+ * Also registers `cy.matchSnapshot()` as an alias for backward compatibility.
  *
  * The command supports two call styles:
  *
  * **Page / full-document screenshot**
  * ```ts
- * cy.matchSnapshot('page-name');
- * cy.matchSnapshot('page-name', { capture: 'fullPage', threshold: 0.05 });
+ * cy.matchImageSnapshot('page-name');
+ * cy.matchImageSnapshot('page-name', { capture: 'fullPage', threshold: 0.05 });
  * ```
  *
  * **Element screenshot (chained on a subject)**
  * ```ts
- * cy.get('[data-testid="hero"]').matchSnapshot('hero-section');
- * cy.get('.modal').matchSnapshot('modal', { failOnDiff: true });
+ * cy.get('[data-testid="hero"]').matchImageSnapshot('hero-section');
+ * cy.get('.modal').matchImageSnapshot('modal', { failOnDiff: true });
  * ```
  *
  * This function is idempotent — calling it more than once will overwrite the
  * previous registration, which is the expected Cypress behaviour.
  */
 export function registerCommands(): void {
-  // Cypress.Commands.add with prevSubject:'optional' receives the subject as
-  // the first argument when chained, or undefined when called top-level.
-  // We use `unknown` to stay compatible with strict Cypress typings, then cast
-  // inside matchSnapshotImpl.
+  const commandHandler = (
+    subject: unknown,
+    name: string,
+    options: MatchSnapshotOptions = {},
+  ) => {
+    matchSnapshotImpl(subject, name, options);
+  };
+
+  // Primary command name
+  // @ts-ignore - Cypress.Commands.add overload signatures are complex
+  (Cypress.Commands as any).add(
+    "matchImageSnapshot",
+    { prevSubject: "optional" },
+    commandHandler,
+  );
+
+  // Backward-compatible alias
   // @ts-ignore - Cypress.Commands.add overload signatures are complex
   (Cypress.Commands as any).add(
     "matchSnapshot",
     { prevSubject: "optional" },
-    (subject: unknown, name: string, options: MatchSnapshotOptions = {}) => {
-      matchSnapshotImpl(subject, name, options);
-    },
+    commandHandler,
   );
 }
 
 // ─── Auto-register ────────────────────────────────────────────────────────────
 
-// Register the command immediately when this module is imported.
+// Register the commands immediately when this module is imported.
 // This mirrors the behaviour of the original `commands.js` and means users
 // just need to import the file — they do not have to call `registerCommands()`
 // themselves.

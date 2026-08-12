@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 "use strict";
 
+// Load .env file for AI configuration
+try { require("dotenv").config(); } catch (_e) { /* dotenv should be available */ }
+
 /**
  * Post-run AI analysis report generator (shared by plugin `after:run` and the CLI).
  *

@@ -398,11 +398,18 @@ function handleCompareResult(
   const hasDiff = result.status === "compared" && (result.mismatch ?? 0) > 0;
 
   if (hasDiff) {
+    const diffPath = toReportPath(diffDir, snapshotKey);
+    // Explicitly log the diff path so the user can easily find it
+    console.warn(
+      `[cypress-snapshot-bug-reporter] ❌ Snapshot mismatch: ${snapshotKey}`,
+    );
+    console.warn(`[cypress-snapshot-bug-reporter] 📸 Diff saved: ${diffPath}`);
+
     addContext(
       `Severity: ${result.severity ?? "Unknown"}`,
       `${result.mismatch} pixels (${result.mismatchPercent})`,
     );
-    addContext("Diff Image", toReportPath(diffDir, snapshotKey));
+    addContext("Diff Image", diffPath);
   }
 
   // ── Queue for AI analysis ──────────────────────────────────────────────────

@@ -3,6 +3,15 @@
  */
 
 import type { AIConfig, AIProvider } from "../types/ai";
+
+// Load .env as a safety net for any direct executions
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("dotenv").config();
+} catch (_e) {
+  // Silent ignore
+}
+
 import { DEFAULT_AI_TIMEOUT_MS } from "../utils/constants";
 
 /**

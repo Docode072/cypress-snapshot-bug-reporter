@@ -25,6 +25,15 @@
 
 import * as fs from "fs";
 import * as path from "path";
+
+// Load .env file automatically so users don't need to configure dotenv themselves
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require("dotenv").config();
+} catch (_e) {
+  // dotenv is a dependency, but if it somehow fails, continue silently
+}
+
 import { hideDir, removeDir } from "../utils/filesystem";
 import {
   resolveConfig,

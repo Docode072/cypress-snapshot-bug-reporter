@@ -18,7 +18,9 @@ async function runInit() {
   console.log("🤖 Cypress Snapshot Bug Reporter Setup");
   console.log("======================================================\n");
 
-  console.log("This utility will help you configure your AI provider API keys.");
+  console.log(
+    "This utility will help you configure your AI provider API keys.",
+  );
   console.log("The keys will be saved to a .env file in your project root.\n");
 
   const envFilePath = path.join(process.cwd(), ".env");
@@ -50,7 +52,8 @@ async function runInit() {
       selectedProvider = "google";
       providerDisplay = "Google Gemini";
       defaultModel = "gemini-1.5-flash";
-      defaultEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+      defaultEndpoint =
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
       break;
     } else if (lowerAnswer === "openai") {
       selectedProvider = "openai";
@@ -65,7 +68,9 @@ async function runInit() {
       defaultEndpoint = "https://api.anthropic.com/v1/messages";
       break;
     } else {
-      console.log("Invalid option. Please enter google, openai, anthropic, or skip.");
+      console.log(
+        "Invalid option. Please enter google, openai, anthropic, or skip.",
+      );
     }
   }
 
@@ -102,7 +107,9 @@ async function runInit() {
   console.log("\n======================================================");
   console.log("✅ Setup Complete!");
   console.log("======================================================");
-  console.log("You can now run your visual regression tests with AI bug reporting.");
+  console.log(
+    "You can now run your visual regression tests with AI bug reporting.",
+  );
 
   rl.close();
 }

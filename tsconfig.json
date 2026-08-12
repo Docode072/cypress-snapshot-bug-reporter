@@ -34,7 +34,7 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "removeComments": false,
-    "importHelpers": true,
+    "importHelpers": false,
 
     // Interop Constraints
     "esModuleInterop": true,

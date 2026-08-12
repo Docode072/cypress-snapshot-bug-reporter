@@ -264,6 +264,9 @@ export function registerTasks(
     removeDir(tempDir);
 
     if (cfg.analysisMode === "after") {
+      console.log(
+        `\n[cypress-snapshot-bug-reporter] 🤖 Spawning AI analysis report...`,
+      );
       spawnAnalysisReport(cfg.pendingAnalysisFile, cfg.excelFile);
     }
 
