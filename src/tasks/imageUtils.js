@@ -61,13 +61,25 @@ function extractDiffRegions(diffBuffer, gapTolerance = 5, padding = 10) {
   const img = PNG.sync.read(diffBuffer);
   const { width, height, data } = img;
 
+  const COMPOSITE_SEP = 8;
+  const panelWidth = Math.floor((width - 2 * COMPOSITE_SEP) / 3);
+  const startX = panelWidth + COMPOSITE_SEP;
+  const endX = startX + panelWidth;
+
   const rowBounds = new Array(height).fill(null);
   for (let y = 0; y < height; y++) {
     let minX = Infinity,
       maxX = -Infinity;
-    for (let x = 0; x < width; x++) {
+    for (let x = startX; x < endX; x++) {
       const i = (y * width + x) * 4;
-      if (data[i] > 200 && data[i + 1] < 80 && data[i + 2] < 80) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      const isRed = r > 200 && g < 80 && b < 80;
+      const isYellow = r > 200 && g > 150 && b < 100;
+
+      if (isRed || isYellow) {
         if (x < minX) minX = x;
         if (x > maxX) maxX = x;
       }

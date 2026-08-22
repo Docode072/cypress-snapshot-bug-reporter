@@ -4,11 +4,10 @@
  * AI-powered diff analysis pipeline.
  *
  * For each changed region detected in a pixelmatch diff, this module:
- *   1. Crops three images from the diff area:
+ *   1. Crops two images from the diff area:
  *        - baseline crop  (what it should look like)
  *        - actual crop    (what it actually looks like)
- *        - diff crop      (pixelmatch highlights — red/yellow marks exact changed pixels)
- *   2. Encodes all three as base64 PNG data.
+ *   2. Encodes both as base64 PNG data.
  *   3. Sends them to the configured AI provider with a structured-output prompt.
  *   4. Parses and validates the JSON response.
  *   5. Returns enriched region results including location hierarchy
@@ -35,7 +34,6 @@ const {
   extractDiffRegions,
   toSingleImageCoords,
   cropRegionFromParsed,
-  cropDiffPanelRegion,
 } = require("./imageUtils");
 
 const { writeAnalysisToExcel } = require("./diffExcelWriter");
@@ -73,10 +71,9 @@ function resolveAiConfig() {
 // ---------------------------------------------------------------------------
 
 const SYSTEM_PROMPT = `You are an expert QA visual bug detection assistant.
-You will receive three image crops from the same bounding region of a UI screenshot:
+You will receive two image crops from the same bounding region of a UI screenshot:
   Image 1 — BASELINE: the expected / reference state
   Image 2 — ACTUAL:   the current / tested state
-  Image 3 — DIFF:     the pixelmatch diff (red pixels = changed, yellow = anti-aliasing difference)
 
 Analyse the visual difference and report ONLY genuine visual bugs or functional diffs.
 Do not include markdown fences, explanations, or any text outside the JSON.
@@ -121,7 +118,7 @@ function toDataUrl(buffer) {
   return `data:image/png;base64,${buffer.toString("base64")}`;
 }
 
-function buildOpenAiPayload(model, baselineB64, actualB64, diffB64) {
+function buildOpenAiPayload(model, baselineB64, actualB64) {
   return {
     model,
     messages: [
@@ -137,10 +134,6 @@ function buildOpenAiPayload(model, baselineB64, actualB64, diffB64) {
             type: "image_url",
             image_url: { url: toDataUrl(actualB64), detail: "high" },
           },
-          {
-            type: "image_url",
-            image_url: { url: toDataUrl(diffB64), detail: "high" },
-          },
         ],
       },
     ],
@@ -149,7 +142,7 @@ function buildOpenAiPayload(model, baselineB64, actualB64, diffB64) {
   };
 }
 
-function buildAnthropicPayload(model, baselineB64, actualB64, diffB64) {
+function buildAnthropicPayload(model, baselineB64, actualB64) {
   const img = (data) => ({
     type: "image",
     source: {
@@ -167,7 +160,6 @@ function buildAnthropicPayload(model, baselineB64, actualB64, diffB64) {
         content: [
           img(baselineB64),
           img(actualB64),
-          img(diffB64),
           { type: "text", text: SYSTEM_PROMPT },
         ],
       },
@@ -175,7 +167,7 @@ function buildAnthropicPayload(model, baselineB64, actualB64, diffB64) {
   };
 }
 
-function buildGooglePayload(model, baselineB64, actualB64, diffB64) {
+function buildGooglePayload(model, baselineB64, actualB64) {
   const imgPart = (data) => ({
     inline_data: { mime_type: "image/png", data: data.toString("base64") },
   });
@@ -186,7 +178,6 @@ function buildGooglePayload(model, baselineB64, actualB64, diffB64) {
           { text: SYSTEM_PROMPT },
           imgPart(baselineB64),
           imgPart(actualB64),
-          imgPart(diffB64),
         ],
       },
     ],
@@ -194,13 +185,13 @@ function buildGooglePayload(model, baselineB64, actualB64, diffB64) {
   };
 }
 
-function buildPayload(provider, model, baselineB64, actualB64, diffB64) {
+function buildPayload(provider, model, baselineB64, actualB64) {
   if (provider === "anthropic")
-    return buildAnthropicPayload(model, baselineB64, actualB64, diffB64);
+    return buildAnthropicPayload(model, baselineB64, actualB64);
   if (provider === "google")
-    return buildGooglePayload(model, baselineB64, actualB64, diffB64);
+    return buildGooglePayload(model, baselineB64, actualB64);
   // openai and custom use OpenAI-compatible format
-  return buildOpenAiPayload(model, baselineB64, actualB64, diffB64);
+  return buildOpenAiPayload(model, baselineB64, actualB64);
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +404,7 @@ function parseAiResponse(provider, rawBody) {
 // ---------------------------------------------------------------------------
 
 /**
- * Analyse a single diff region by calling the AI provider with three image crops.
+ * Analyse a single diff region by calling the AI provider with two image crops.
  * Returns the structured analysis result merged with the original region bounds.
  */
 async function analyzeRegion({
@@ -426,14 +417,12 @@ async function analyzeRegion({
 }) {
   const baselineCrop = cropRegionFromParsed(baselinePng, region);
   const actualCrop = cropRegionFromParsed(actualPng, region);
-  const diffCrop = cropDiffPanelRegion(diffBuffer, region, panelWidth);
 
   const payload = buildPayload(
     aiConfig.provider,
     aiConfig.model,
     baselineCrop,
-    actualCrop,
-    diffCrop,
+    actualCrop
   );
 
   const rawResponse = await callAiProvider({ ...aiConfig, payload });

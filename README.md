@@ -104,9 +104,21 @@ it('should handle advanced snapshot options', () => {
 
 ## ⚙️ How It Works
 
-The plugin operates in a simple 2-run flow:
-1. **First Run**: Creates baseline snapshots (your source of truth).
-2. **Second Run**: Compares current UI against baselines, generates visual diff images, runs AI analysis on failures, and automatically creates a detailed Excel report.
+The plugin operates in a simple **2-run flow**:
+
+### Run 1 — Capture Baselines
+Your first `npx cypress run` captures baseline screenshots for every `cy.matchImageSnapshot()` call. These are your "source of truth" — the expected state of your UI.
+
+### Run 2 — Detect & Report Bugs
+On subsequent runs, the plugin automatically:
+
+1. **Generates "actual" screenshots** of the current UI state.
+2. **Pixel-compares** each actual screenshot against its baseline using [pixelmatch](https://github.com/mapbox/pixelmatch), producing a composite diff image highlighting changed regions.
+3. **Sends ONLY the clean baseline and actual images** (not the noisy diff overlay) to your configured AI vision model. This gives the AI clear, unobstructed context to identify the exact nature of the visual change.
+4. **Generates a structured Excel bug report** (`.xlsx`) with AI-extracted details: what changed, where it changed, the exact before/after values, and a confidence score.
+
+> **Why baseline + actual instead of the diff image?**
+> The pixelmatch diff overlay contains red/yellow pixel markers that obscure the actual content. By sending the AI the clean baseline and actual images side-by-side, it can accurately read text, numbers, colors, and layout changes — producing far more precise bug reports.
 
 ## 📊 AI-Generated Reports
 
