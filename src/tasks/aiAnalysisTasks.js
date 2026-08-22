@@ -422,7 +422,7 @@ async function analyzeRegion({
     aiConfig.provider,
     aiConfig.model,
     baselineCrop,
-    actualCrop
+    actualCrop,
   );
 
   const rawResponse = await callAiProvider({ ...aiConfig, payload });
